@@ -1,71 +1,53 @@
 # Loan Approval Classification
 
-Predicting loan approval decisions from applicant demographic, financial,
-employment, and credit-related data, using classical ML classification models.
+[![notebook](https://github.com/th3realAyo/loan_approval_classification/actions/workflows/notebook.yml/badge.svg)](https://github.com/th3realAyo/loan_approval_classification/actions/workflows/notebook.yml)
 
-## Status
+Predicts whether a loan application is approved from the applicant's income, employment,
+credit profile and loan details. Trained on 45,000 applications
+([Kaggle](https://www.kaggle.com/datasets/muhammadmusharraf444/loan-approval-dataset)), 22% approved.
 
-In progress — feature encoding complete, currently investigating data
-leakage flagged during feature importance analysis (see Notes below) before
-finalizing model comparison.
+## Approach
 
-## Data
+- **Policy rule + model.** Every applicant with a previous loan is rejected in the data, with no
+  exceptions. That is a hard rule, not something to learn, so it is applied directly and the model
+  only scores the remaining applicants.
+- **One sklearn pipeline** handles log transforms, scaling and encoding, so nothing leaks between
+  train and test and the saved model takes raw input.
+- **Model selection** with 5-fold stratified CV across logistic regression, random forest and
+  gradient boosting; the winner (`HistGradientBoostingClassifier`) is tuned with a randomised search.
+- **Decision threshold** tuned on out-of-fold predictions, then checked once on a held-out test set.
 
-Source: [Kaggle — loan-approval-dataset](https://www.kaggle.com/datasets/muhammadmusharraf444/loan-approval-dataset)
-by muhammadmusharraf444.
+## Results
 
-Data is **not** committed to this repo — it's downloaded at runtime via
-`kagglehub`. Run the notebook top to bottom to fetch it fresh.
+Held-out test set (8,999 applications), approved class:
 
-## Project structure
+| | Accuracy | Precision | Recall | F1 | ROC-AUC |
+|---|---|---|---|---|---|
+| First version (random forest) | 0.90 | 0.71 | 0.90 | 0.79 | n/a |
+| **Current** | **0.934** | **0.861** | **0.836** | **0.849** | **0.978** |
 
-```
-notebooks/    → main analysis + modeling notebook (.ipynb)
-data/         → runtime download target (gitignored, not tracked)
-reports/      → figures / exported charts, if any
-```
+Loan-to-income ratio, interest rate, home ownership and income drive the predictions. Gender and
+education have no measurable effect. Full metrics are in [`artifacts/metrics.json`](artifacts/metrics.json).
 
-## Setup
+## Run
 
 ```bash
 pip install -r requirements.txt
+jupyter notebook loan_approval_classification_model.ipynb
 ```
 
-You'll need a Kaggle account and API token configured for `kagglehub` to
-download the dataset (`kagglehub.login()` in the first cell handles this
-interactively in Colab).
+The dataset downloads automatically on first run. CI re-runs the notebook on every push and fails
+if test ROC-AUC drops below 0.95 or F1 below 0.80.
 
-## Pipeline overview
+## Future work
 
-1. Data cleaning & standardization (column names, casing)
-2. Univariate + exploratory analysis
-3. Train/test split (stratified on target, 80/20)
-4. Feature encoding:
-   - Ordinal: `education` (explicit rank order)
-   - Binary: `gender`, `previous_loan`
-   - One-hot: `loan_intent`, `home_ownership`
-   - Numeric: log-transform (`person_income`, `loan_amount`) + `StandardScaler`
-5. Baseline model: Logistic Regression (`class_weight="balanced"`)
-6. Comparison model: Random Forest (`class_weight="balanced"`)
-7. Feature importance review
+- Fairness audit across gender and age, and a version trained without protected attributes
+- SHAP explanations for individual decisions
+- Cost-based threshold (price a bad approval against a missed good applicant)
+- Confirm `loan_interest_rate` is known before the decision, not set after it
+- Serve the exported pipeline behind a small prediction API
 
-## Notes / open issues
+## Contributing
 
-- **`previous_loan` leakage flagged**: crosstab against the target shows a
-  deterministic split (`previous_loan == "yes"` → 100% rejected, 0 exceptions).
-  This is being treated as leakage — likely a hard rule baked into how labels
-  were generated rather than a genuine independent predictor. Current
-  model metrics (below) are **inflated** and will be re-run once this is
-  resolved.
-- `credit_history` and `loan_percentage` are being checked for the same
-  pattern before finalizing the feature set.
-- `loan_interest_rate` was investigated for leakage and cleared — overlapping
-  distributions across both outcome classes with no hard cutoff, consistent
-  with risk-based pricing rather than a post-decision artifact.
-
-## Results (baseline — pre-leakage-fix, will be updated)
-
-| Model | Accuracy | Precision (approved) | Recall (approved) | F1 (approved) |
-|---|---|---|---|---|
-| Logistic Regression | 0.86 | 0.63 | 0.93 | 0.75 |
-| Random Forest | 0.90 | 0.71 | 0.90 | 0.79 |
+Ideas, issues and pull requests are welcome. If you're picking up one of the items above, open an
+issue first so we can agree on the approach.
