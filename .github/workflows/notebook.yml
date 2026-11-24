@@ -1,0 +1,37 @@
+name: notebook
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pipx run ruff==0.17.6 check .
+
+  execute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt nbconvert==7.17.1
+      - name: Run notebook top to bottom
+        run: >
+          jupyter nbconvert --to notebook --execute
+          loan_approval_classification_model.ipynb
+          --output executed.ipynb
+          --ExecutePreprocessor.timeout=1800
+      - uses: actions/upload-artifact@v4
+        with:
+          name: model
+          path: |
+            artifacts/
+            executed.ipynb
